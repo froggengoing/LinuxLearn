@@ -296,6 +296,12 @@ Linux内存管理是一个复杂的系统，并且随着时间的推移，提供
 1. [Linux分页机制之概述--Linux内存管理(六)](https://blog.csdn.net/gatieme/article/details/52402861?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.nonecase&depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.nonecase)
 2. [Linux传统Huge Pages与Transparent Huge Pages再次学习总结](https://www.cnblogs.com/kerrycode/p/7760026.html) 
 
+## 进程管理
+
+### 资料
+
+1.[进程切换分析TLB管理](http://www.wowotech.net/process_management/context-switch-tlb.html)
+
 # linux命令
 
 ## 1. 查看debian系统版本
@@ -502,6 +508,154 @@ chkconfig [--add][--del][--list][系统服务] 或 chkconfig [--level <等级代
 
 1. [TOP命令使用](https://linux.cn/article-9937-1.html)
 2. [top命令在线手册](http://man7.org/linux/man-pages/man1/top.1.html)
+
+
+
+## ulimit
+
+### 作用
+
+```shell
+ulimit主要是用来限制进程对资源的使用情况的，它支持各种类型的限制，常用的有：
+内核文件的大小限制
+进程数据块的大小限制
+Shell进程创建文件大小限制
+可加锁内存大小限制
+常驻内存集的大小限制
+打开文件句柄数限制
+分配堆栈的最大大小限制
+CPU占用时间限制用户最大可用的进程数限制
+Shell进程所能使用的最大虚拟内存限制
+```
+
+### 用法
+
+```
+-a 显示当前系统所有的limit资源信息。 
+
+-H 设置硬资源限制，一旦设置不能增加。
+
+-S 设置软资源限制，设置后可以增加，但是不能超过硬资源设置。
+
+-c 最大的core文件的大小，以 blocks 为单位。
+
+-f 进程可以创建文件的最大值，以blocks 为单位.
+
+-d 进程最大的数据段的大小，以Kbytes 为单位。
+
+-m 最大内存大小，以Kbytes为单位。
+
+-n 查看进程可以打开的最大文件描述符的数量。
+
+-s 线程栈大小，以Kbytes为单位。
+
+-p 管道缓冲区的大小，以Kbytes 为单位。
+
+-u 用户最大可用的进程数。
+
+-v 进程最大可用的虚拟内存，以Kbytes 为单位。
+
+-t 最大CPU占用时间，以秒为单位。
+
+-l 最大可加锁内存大小，以Kbytes 为单位。
+
+```
+
+注意：/proc为内存的信息，所以使用ulimit所做的修改都是当前有效，重启后就失效。
+
+### 分析
+
+```
+[root@centos5 ~]# ulimit -a
+core file size          (blocks, -c) 0
+data seg size           (kbytes, -d) unlimited
+max nice                        (-e) 0
+file size               (blocks, -f) unlimited
+pending signals                 (-i) 4096
+max locked memory       (kbytes, -l) 32
+max memory size         (kbytes, -m) unlimited
+open files                      (-n) 1024
+pipe size            (512 bytes, -p) 8
+POSIX message queues     (bytes, -q) 819200
+max rt priority                 (-r) 0
+stack size              (kbytes, -s) 10240
+cpu time               (seconds, -t) unlimited
+max user processes              (-u) 4096
+virtual memory          (kbytes, -v) unlimited
+file locks                      (-x) unlimited||<
+```
+
+* ulimit 命令来修改,但ulimit命令修改的数值只对当前登录用户的目前使用环境有效,系统重启或者用户退出后就会失效
+* 可以将用户资源的限制统一由一个文件来配置，这个文件就是`/etc/security/limits.conf`
+* “cat /proc/sys/fs/file-max”，或“sysctl -a | grep fs.file-max”查看系统能打开的最大文件数
+
+### 系统进程的最大理论数计算
+
+- 每个进程都要在全局段描述表GDT中占据两个表项
+
+- 段寄存器中用作GDT表下标的位段宽度是13位，所以GDT中可以有213=8192213=8192个描述项。
+
+  > 除一些系统的开销(例如GDT中的第2项和第3项分别用于内核 的代码段和数据段，第4项和第5项永远用于当前进程的代码段和数据段，第1项永远是0，等等)以外，尚有8180个表项可供使用，所以理论上系统中最大的 进程数量是8180/2=40908180/2=4090。
+  > 原文链接：https://blog.csdn.net/gatieme/article/details/51058797
+
+### 系统中可创建的进程数实际值
+
+```shell
+#查看
+cat /proc/sys/kernel/pid_max
+#修改
+ulimit -u 65535
+#系统最大进程数还受内核参数kernel.pid_max，我默认是32768
+sysctl -w  kernel.pid_max=65535
+```
+
+### 最大线程数
+
+> linux 系统中单个进程的最大线程数有其最大的限制 PTHREAD_THREADS_MAX
+> 这个限制可以在`/usr/include/bits/local_lim.h`中查看
+> 这个系统的资源主要就是线程的 stack 所占用的内存，用 `ulimit -s` 可以查看默认的线程栈大小，一般情况下，这个值是8M=8192KB
+>
+> Linux无法直接控制单个进程可拥有的线程数，但有参考公式max = VM/stack_size，默认stack为8k，可通过降低stack大小或增加虚拟内存来调大每个进程可拥有的最大线程数；
+
+```shell
+shell /proc/sys/kernel/thread-max
+```
+
+
+
+### 系统最大打开文件数
+
+```shell
+cat /proc/sys/fs/file-max
+```
+
+### 单个进程可分配的最大文件数
+
+```shell
+cat /proc/sys/fs/nr_open
+```
+
+### nofile进程最大打开文件描述符数
+
+```shell
+ulimit -n
+##ulimit -n默认查看的是soft limit，但是ulimit -n 1800000则是同时设置soft limit和hard limit
+#soft limit
+ulimit -Sn
+#hard limit
+soft -Hn
+#修改永久有效，则需要在
+/etc/security/limits.conf
+```
+
+注意：
+
+> 1. nofile的soft limit不能超过其hard limit
+> 2. nofile的hard limit不能超过/proc/sys/fs/nr_open
+
+### 资料
+
+1. [JVM最大线程](https://www.cnblogs.com/princessd8251/articles/3914434.html)
 
 
 
